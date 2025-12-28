@@ -1,4 +1,5 @@
 require("dotenv").config();
+const pool = require("./config/db"); // Ensure the path points to your db config file
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -43,23 +44,30 @@ io.on("connection", (socket) => {
    * 2. PRIVATE MESSAGE HANDLING
    * Instead of io.emit (global), we use io.to(chatId).emit (room-specific).
    */
-  socket.on("sendMessage", (data) => {
+  socket.on("sendMessage", async (data) => {
     const { chatId, senderId, text } = data;
 
-    if (!chatId || !text) return;
+    // debug log to see if server gets it
+    console.log("Server received message:", data); 
 
-    /**
-     * io.to(chatId).emit:
-     * Sends the message to every socket currently in that specific room.
-     * This includes the sender, so the frontend receives its own message back 
-     * confirming it was successfully processed by the server.
-     */
-    io.to(chatId).emit("receiveMessage", {
-      chatId,
-      senderId,
-      text,
-      timestamp: new Date()
-    });
+    try {
+      // 1. Save to DB (Assuming you have the pool query setup)
+      await pool.query(
+        "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1, $2, $3)",
+        [chatId, senderId, text]
+      );
+
+      // 2. BROADCAST BACK TO THE ROOM
+      // This sends it to everyone in the room, INCLUDING the sender
+      io.to(chatId).emit("receiveMessage", {
+        chatId,
+        senderId,
+        text
+      });
+      
+    } catch (err) {
+      console.error("Error handling message:", err);
+    }
   });
 
   /**

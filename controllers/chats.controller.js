@@ -1,8 +1,8 @@
 const pool = require("../config/db");
 
 const getOrCreatePrivateChat = async (req, res, next) => {
-  const user1 = req.user.id;      // logged-in user
-  const user2 = req.body.userId;  // target user
+  const user1 = req.user.id;      // Logged-in user
+  const user2 = req.body.userId;  // Target user
 
   if (!user2 || user1 === user2) {
     return res.status(400).json({ message: "Invalid user" });
@@ -10,7 +10,7 @@ const getOrCreatePrivateChat = async (req, res, next) => {
 
   try {
     // 1️⃣ Check if private chat already exists
-    const existingChat = await pool.query(
+    let chatResult = await pool.query(
       `
       SELECT c.id
       FROM chats c
@@ -23,27 +23,41 @@ const getOrCreatePrivateChat = async (req, res, next) => {
       [user1, user2]
     );
 
-    if (existingChat.rows.length > 0) {
-      return res.json({ chatId: existingChat.rows[0].id });
+    let chatId;
+
+    if (chatResult.rows.length > 0) {
+      chatId = chatResult.rows[0].id;
+    } else {
+      // 2️⃣ Create new private chat if it doesn't exist
+      const newChat = await pool.query(
+        "INSERT INTO chats (type) VALUES ('private') RETURNING id"
+      );
+      chatId = newChat.rows[0].id;
+
+      // 3️⃣ Add both users as members
+      await pool.query(
+        "INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)",
+        [chatId, user1, user2]
+      );
     }
 
-    // 2️⃣ Create new private chat
-    const chatResult = await pool.query(
-      "INSERT INTO chats (type) VALUES ('private') RETURNING id"
-    );
-
-    const chatId = chatResult.rows[0].id;
-
-    // 3️⃣ Add both users as members
-    await pool.query(
+    // 4️⃣ FETCH MESSAGE HISTORY
+    // We fetch the history regardless of whether the chat was just created or already existed
+    const history = await pool.query(
       `
-      INSERT INTO chat_members (chat_id, user_id)
-      VALUES ($1, $2), ($1, $3)
+      SELECT sender_id AS "senderId", content AS text, created_at 
+      FROM messages 
+      WHERE chat_id = $1 
+      ORDER BY created_at ASC
       `,
-      [chatId, user1, user2]
+      [chatId]
     );
 
-    res.status(201).json({ chatId });
+    res.status(200).json({ 
+      chatId, 
+      messages: history.rows // This sends the old chats back to React
+    });
+
   } catch (err) {
     next(err);
   }
