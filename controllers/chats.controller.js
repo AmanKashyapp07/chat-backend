@@ -63,6 +63,52 @@ const getOrCreatePrivateChat = async (req, res, next) => {
   }
 };
 
+const deletePrivateChat = async (req, res, next) => {
+  const user1 = req.user.id;        // logged-in user
+  const user2 = req.body.userId;    // target user
+
+  if (!user2 || user1 === user2) {
+    return res.status(400).json({ message: "Invalid user" });
+  }
+
+  try {
+    // 1️⃣ Find all private chats between the two users
+    const chatsResult = await pool.query(
+      `
+      SELECT c.id
+      FROM chats c
+      JOIN chat_members cm1 ON cm1.chat_id = c.id
+      JOIN chat_members cm2 ON cm2.chat_id = c.id
+      WHERE c.type = 'private'
+        AND cm1.user_id = $1
+        AND cm2.user_id = $2
+      `,
+      [user1, user2]
+    );
+
+    if (chatsResult.rows.length === 0) {
+      return res.status(404).json({ message: "No private chat found" });
+    }
+
+    const chatIds = chatsResult.rows.map(row => row.id);
+
+    // 2️⃣ Delete chats (messages & members auto-deleted via CASCADE)
+    await pool.query(
+      `DELETE FROM chats WHERE id = ANY($1::int[])`,
+      [chatIds]
+    );
+
+    res.json({
+      message: "Private chat deleted successfully",
+      deletedChats: chatIds
+    });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
-  getOrCreatePrivateChat
+  getOrCreatePrivateChat,
+  deletePrivateChat
 };
