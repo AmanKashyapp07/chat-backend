@@ -1,7 +1,9 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const pool = require("./config/db"); // ✅ ADDED (required for db-test)
 
 /**
  * 1. SERVER SETUP
@@ -9,6 +11,7 @@ const { Server } = require("socket.io");
  * We wrap the Express 'app' inside the 'http' server.
  */
 const app = express();
+app.use(express.json());
 app.use(cors()); // Enable CORS so your frontend can talk to this backend
 
 const server = http.createServer(app);
@@ -95,6 +98,8 @@ socket.on("disconnect", () => {
  * 7. START THE ENGINE
  * The server listens on port 8000.
  */
+app.use("/api/auth", require("./routes/auth.routes"));
+
 server.listen(8000, () => {
   console.log("Chat Server is live at http://localhost:8000");
 });
