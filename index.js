@@ -27,7 +27,7 @@ const io = new Server(server, {
  * SOCKET.IO LOGIC (Private Messaging)
  */
 io.on("connection", (socket) => {
-  console.log("New connection:", socket.id);
+  
 
   /**
    * 1. JOIN CHAT ROOM
@@ -37,7 +37,6 @@ io.on("connection", (socket) => {
   socket.on("joinChat", (chatId) => {
     // A socket can leave previous rooms if necessary, but here we simply join
     socket.join(chatId);
-    console.log(`User ${socket.id} joined private room: ${chatId}`);
   });
 
   /**
@@ -47,8 +46,7 @@ io.on("connection", (socket) => {
   socket.on("sendMessage", async (data) => {
     const { chatId, senderId, text } = data;
 
-    // debug log to see if server gets it
-    console.log("Server received message:", data); 
+    
 
     try {
       // 1. Save to DB (Assuming you have the pool query setup)
@@ -73,9 +71,7 @@ io.on("connection", (socket) => {
   /**
    * 3. DISCONNECT
    */
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-  });
+  
 });
 
 // --- REST API ROUTES ---
