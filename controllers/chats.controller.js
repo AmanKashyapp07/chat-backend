@@ -172,9 +172,8 @@ const getUserGroups = async (req, res, next) => {
 
 const getGroupChats = async (req, res, next) => {
   const { chatId } = req.params;
-
   try {
-    // 1. Verify membership
+    // Simple verification: ensure user is a member of this chat
     const memberCheck = await pool.query(
       "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
       [chatId, req.user.id]
@@ -184,38 +183,17 @@ const getGroupChats = async (req, res, next) => {
       return res.status(403).json({ message: "Not a member" });
     }
 
-    // 2. Fetch Messages with Sender Names (JOIN users)
     const history = await pool.query(
-      `SELECT 
-         m.sender_id AS "senderId", 
-         m.content AS text, 
-         m.created_at,
-         u.username AS "senderName"  -- <--- We fetch the name here
-       FROM messages m
-       LEFT JOIN users u ON m.sender_id = u.id
-       WHERE m.chat_id = $1 
-       ORDER BY m.created_at ASC`,
+      `SELECT sender_id AS "senderId", content AS text, created_at 
+       FROM messages WHERE chat_id = $1 ORDER BY created_at ASC`,
       [chatId]
     );
 
-    // 3. Fetch All Group Member Names (For the Header)
-    const members = await pool.query(
-      `SELECT u.username 
-       FROM chat_members cm
-       JOIN users u ON cm.user_id = u.id
-       WHERE cm.chat_id = $1`,
-      [chatId]
-    );
-
-    // Return both messages and the list of member names
-    res.json({
-      messages: history.rows,
-      members: members.rows.map(r => r.username)
-    });
-
+    res.json(history.rows);
   } catch (err) {
     next(err);
   }
+
 };
 
 module.exports = {
