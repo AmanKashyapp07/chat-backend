@@ -108,7 +108,120 @@ const deletePrivateChat = async (req, res, next) => {
   }
 };
 
+// 1. CREATE GROUP CHAT
+const createGroupChat = async (req, res, next) => {
+  const userId = req.user.id; // Creator
+  const { name, memberIds } = req.body; // Group Name and array of User IDs
+
+  if (!name || !memberIds || memberIds.length === 0) {
+    return res.status(400).json({ message: "Group name and members are required" });
+  }
+
+  try {
+    // 1. Create the Chat Entry
+    const chatResult = await pool.query(
+      "INSERT INTO chats (type, name) VALUES ('group', $1) RETURNING id, name, type, created_at",
+      [name]
+    );
+    const newChat = chatResult.rows[0];
+
+    // 2. Add Creator + Selected Members to chat_members
+    // We combine the creator's ID with the list of selected members
+    const uniqueMembers = [...new Set([userId, ...memberIds])];
+
+    // Generate SQL for multiple inserts: ($1, $2), ($3, $4)...
+    // This is a dynamic query builder approach
+    const values = [];
+    const placeholders = [];
+    
+    uniqueMembers.forEach((memberId, index) => {
+      values.push(newChat.id, memberId);
+      placeholders.push(`($${index * 2 + 1}, $${index * 2 + 2})`);
+    });
+
+    const insertQuery = `
+      INSERT INTO chat_members (chat_id, user_id) 
+      VALUES ${placeholders.join(", ")}
+    `;
+
+    await pool.query(insertQuery, values);
+
+    res.json(newChat);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// 2. GET MY GROUPS
+const getUserGroups = async (req, res, next) => {
+  const userId = req.user.id;
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.name, c.type 
+       FROM chats c
+       JOIN chat_members cm ON c.id = cm.chat_id
+       WHERE cm.user_id = $1 AND c.type = 'group'
+       ORDER BY c.created_at DESC`,
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getGroupChats = async (req, res, next) => {
+  const { chatId } = req.params;
+
+  try {
+    // 1. Verify membership
+    const memberCheck = await pool.query(
+      "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+      [chatId, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Not a member" });
+    }
+
+    // 2. Fetch Messages with Sender Names (JOIN users)
+    const history = await pool.query(
+      `SELECT 
+         m.sender_id AS "senderId", 
+         m.content AS text, 
+         m.created_at,
+         u.username AS "senderName"  -- <--- We fetch the name here
+       FROM messages m
+       LEFT JOIN users u ON m.sender_id = u.id
+       WHERE m.chat_id = $1 
+       ORDER BY m.created_at ASC`,
+      [chatId]
+    );
+
+    // 3. Fetch All Group Member Names (For the Header)
+    const members = await pool.query(
+      `SELECT u.username 
+       FROM chat_members cm
+       JOIN users u ON cm.user_id = u.id
+       WHERE cm.chat_id = $1`,
+      [chatId]
+    );
+
+    // Return both messages and the list of member names
+    res.json({
+      messages: history.rows,
+      members: members.rows.map(r => r.username)
+    });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getOrCreatePrivateChat,
-  deletePrivateChat
+  deletePrivateChat,
+  createGroupChat,
+  getUserGroups,
+  getGroupChats
 };
