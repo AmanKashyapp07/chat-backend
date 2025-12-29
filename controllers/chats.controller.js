@@ -1,8 +1,8 @@
 const pool = require("../config/db");
 
 const getOrCreatePrivateChat = async (req, res, next) => {
-  const user1 = req.user.id;      // Logged-in user
-  const user2 = req.body.userId;  // Target user
+  const user1 = req.user.id; // Logged-in user
+  const user2 = req.body.userId; // Target user
 
   if (!user2 || user1 === user2) {
     return res.status(400).json({ message: "Invalid user" });
@@ -53,19 +53,18 @@ const getOrCreatePrivateChat = async (req, res, next) => {
       [chatId]
     );
 
-    res.status(200).json({ 
-      chatId, 
-      messages: history.rows // This sends the old chats back to React
+    res.status(200).json({
+      chatId,
+      messages: history.rows, // This sends the old chats back to React
     });
-
   } catch (err) {
     next(err);
   }
 };
 
 const deletePrivateChat = async (req, res, next) => {
-  const user1 = req.user.id;        // logged-in user
-  const user2 = req.body.userId;    // target user
+  const user1 = req.user.id; // logged-in user
+  const user2 = req.body.userId; // target user
 
   if (!user2 || user1 === user2) {
     return res.status(400).json({ message: "Invalid user" });
@@ -90,19 +89,15 @@ const deletePrivateChat = async (req, res, next) => {
       return res.status(404).json({ message: "No private chat found" });
     }
 
-    const chatIds = chatsResult.rows.map(row => row.id);
+    const chatIds = chatsResult.rows.map((row) => row.id);
 
     // 2️⃣ Delete chats (messages & members auto-deleted via CASCADE)
-    await pool.query(
-      `DELETE FROM chats WHERE id = ANY($1::int[])`,
-      [chatIds]
-    );
+    await pool.query(`DELETE FROM chats WHERE id = ANY($1::int[])`, [chatIds]);
 
     res.json({
       message: "Private chat deleted successfully",
-      deletedChats: chatIds
+      deletedChats: chatIds,
     });
-
   } catch (err) {
     next(err);
   }
@@ -114,7 +109,9 @@ const createGroupChat = async (req, res, next) => {
   const { name, memberIds } = req.body; // Group Name and array of User IDs
 
   if (!name || !memberIds || memberIds.length === 0) {
-    return res.status(400).json({ message: "Group name and members are required" });
+    return res
+      .status(400)
+      .json({ message: "Group name and members are required" });
   }
 
   try {
@@ -133,7 +130,7 @@ const createGroupChat = async (req, res, next) => {
     // This is a dynamic query builder approach
     const values = [];
     const placeholders = [];
-    
+
     uniqueMembers.forEach((memberId, index) => {
       values.push(newChat.id, memberId);
       placeholders.push(`($${index * 2 + 1}, $${index * 2 + 2})`);
@@ -193,13 +190,43 @@ const getGroupChats = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-
 };
+const getGroupChatsMembers = async (req, res, next) => {
+  const { chatId } = req.params;
 
+  try {
+    // 1️⃣ Verify user is a member of this chat
+    const memberCheck = await pool.query(
+      "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+      [chatId, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Not a member" });
+    }
+
+    // 2️⃣ Fetch group members
+    const members = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM chat_members cm
+      JOIN users u ON cm.user_id = u.id
+      WHERE cm.chat_id = $1
+      ORDER BY u.username
+      `,
+      [chatId]
+    );
+    const usernames = members.rows.map((row) => row.username);
+    res.json(usernames);
+  } catch (err) {
+    next(err);
+  }
+};
 module.exports = {
   getOrCreatePrivateChat,
   deletePrivateChat,
   createGroupChat,
   getUserGroups,
-  getGroupChats
+  getGroupChats,
+  getGroupChatsMembers,
 };
