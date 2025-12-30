@@ -1,5 +1,4 @@
 const pool = require("../config/db");
-
 const getOrCreatePrivateChat = async (req, res, next) => {
   const user1 = req.user.id; // Logged-in user
   const user2 = req.body.userId; // Target user
@@ -61,7 +60,6 @@ const getOrCreatePrivateChat = async (req, res, next) => {
     next(err);
   }
 };
-
 const deletePrivateChat = async (req, res, next) => {
   const user1 = req.user.id; // logged-in user
   const user2 = req.body.userId; // target user
@@ -102,8 +100,6 @@ const deletePrivateChat = async (req, res, next) => {
     next(err);
   }
 };
-
-// 1. CREATE GROUP CHAT
 const createGroupChat = async (req, res, next) => {
   const userId = req.user.id; // Creator
   const { name, memberIds } = req.body; // Group Name and array of User IDs
@@ -148,8 +144,6 @@ const createGroupChat = async (req, res, next) => {
     next(err);
   }
 };
-
-// 2. GET MY GROUPS
 const getUserGroups = async (req, res, next) => {
   const userId = req.user.id;
   try {
@@ -166,7 +160,6 @@ const getUserGroups = async (req, res, next) => {
     next(err);
   }
 };
-
 const getGroupChats = async (req, res, next) => {
   const { chatId } = req.params;
 
@@ -233,6 +226,28 @@ const getGroupChatsMembers = async (req, res, next) => {
     next(err);
   }
 };
+const deleteGroupChats = async (req, res, next) => {
+  const { chatId } = req.params;
+
+  try {
+    const memberCheck = await pool.query(
+      "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+      [chatId, req.user.id]
+    );
+
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Not a member" });
+    }
+    await pool.query(
+      "DELETE FROM messages WHERE chat_id = $1",
+      [chatId]
+    );
+
+    res.json({ message: "Group chat cleared successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
 module.exports = {
   getOrCreatePrivateChat,
   deletePrivateChat,
@@ -240,4 +255,5 @@ module.exports = {
   getUserGroups,
   getGroupChats,
   getGroupChatsMembers,
+  deleteGroupChats
 };
