@@ -169,8 +169,9 @@ const getUserGroups = async (req, res, next) => {
 
 const getGroupChats = async (req, res, next) => {
   const { chatId } = req.params;
+
   try {
-    // Simple verification: ensure user is a member of this chat
+    // Verify membership
     const memberCheck = await pool.query(
       "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
       [chatId, req.user.id]
@@ -180,9 +181,19 @@ const getGroupChats = async (req, res, next) => {
       return res.status(403).json({ message: "Not a member" });
     }
 
+    // 🔥 JOIN users to get sender_name
     const history = await pool.query(
-      `SELECT sender_id AS "senderId", content AS text, created_at 
-       FROM messages WHERE chat_id = $1 ORDER BY created_at ASC`,
+      `
+      SELECT
+        m.sender_id AS "senderId",
+        u.username  AS "sender_name",
+        m.content   AS text,
+        m.created_at
+      FROM messages m
+      JOIN users u ON u.id = m.sender_id
+      WHERE m.chat_id = $1
+      ORDER BY m.created_at ASC
+      `,
       [chatId]
     );
 
